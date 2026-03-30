@@ -1,0 +1,30 @@
+bundle:
+  name: fhir-validation-bundle
+targets:
+  dev:
+    workspace:
+      host: "https://dbc-c30c1e5b-4039.cloud.databricks.com"
+resources:
+  jobs:
+    fhir-validation-bundle:
+      name: fhir-validation-bundle
+      tasks:
+        - task_key: run_validation
+          notebook_task:
+            notebook_path: /Workspace/Shared/data-validation-framework/files/src/dq_great_expectations
+            base_parameters:
+              dataset_catalog: dbx-data-dev
+              dataset_schema: dbx-dq-data-dev
+              dataset_tables: address,department,employee,order,orderitem,person,product,project,storedquery
+              config_catalog: dbx-data-dev
+              config_schema: dbx-dq-configs-dev
+              config_table: dq_rules
+              target_catalog: dbx-data-dev
+              target_schema: fhir-gold
+              quarantine_catalog: dbx-data-dev
+              quarantine_schema: fhir-error
+              enable_quarantine: True
+              enable_encryption: True
+              encryption_key_name: ENCRYPTION_KEY_PII
+              source_is_encrypted: True
+          existing_cluster_id: 0000-000000-xxxxxx
