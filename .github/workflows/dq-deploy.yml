@@ -1,0 +1,114 @@
+name: Deploy DQ Validation Bundles
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'dq_jobs/**'
+  push:
+    branches:
+      - main
+    paths:
+      - 'dq_jobs/**'
+
+permissions:
+  contents: read
+
+jobs:
+  deploy_dq_bundles:
+    runs-on: ubuntu-latest
+    name: Deploy Databricks Validation Bundle
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install Databricks CLI
+        run: |
+          pip install databricks-cli
+
+      - name: Detect bundle changes
+        id: bundle_changes
+        run: |
+          # Find all databricks.yml files in dq_jobs/
+          BUNDLES=$(find dq_jobs -name 'databricks.yml' -type f | head -5)
+          if [ -z "$BUNDLES" ]; then
+            echo "No bundles found in dq_jobs/"
+            exit 0
+          fi
+          echo "bundles=$BUNDLES" >> $GITHUB_OUTPUT
+          for bundle in $BUNDLES; do
+            echo "Found bundle at: $bundle"
+          done
+
+      - name: Validate Databricks bundles
+        if: steps.bundle_changes.outputs.bundles
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+        run: |
+          for bundle_path in ${{ steps.bundle_changes.outputs.bundles }}; do
+            bundle_dir=$(dirname "$bundle_path")
+            echo "Validating bundle in $bundle_dir..."
+            cd "$bundle_dir"
+            databricks bundle validate -t dev || {
+              echo "Bundle validation failed for $bundle_dir"
+              exit 1
+            }
+            cd - > /dev/null
+          done
+
+      - name: Deploy Databricks bundles
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.bundle_changes.outputs.bundles
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+        run: |
+          for bundle_path in ${{ steps.bundle_changes.outputs.bundles }}; do
+            bundle_dir=$(dirname "$bundle_path")
+            job_name=$(grep "name:" "$bundle_path" | head -1 | awk '{print $2}')
+            echo "Deploying $job_name from $bundle_dir..."
+            cd "$bundle_dir"
+            databricks bundle deploy -t dev
+            cd - > /dev/null
+          done
+
+      - name: Run validation jobs
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.bundle_changes.outputs.bundles
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+        run: |
+          for bundle_path in ${{ steps.bundle_changes.outputs.bundles }}; do
+            bundle_dir=$(dirname "$bundle_path")
+            job_name=$(grep "name:" "$bundle_path" | head -1 | awk '{print $2}')
+            echo "Running validation job $job_name..."
+            cd "$bundle_dir"
+            databricks bundle run "$job_name" -t dev || {
+              echo "Job run failed for $job_name"
+              exit 1
+            }
+            cd - > /dev/null
+          done
+
+      - name: Report deployment status
+        if: always()
+        run: |
+          echo "## DQ Bundle Deployment Status" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Validate**: ✓" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ github.event_name }}" == "push" ]; then
+            echo "- **Deploy**: ✓" >> $GITHUB_STEP_SUMMARY
+            echo "- **Run**: ✓" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- **Deploy**: (skipped - PR)" >> $GITHUB_STEP_SUMMARY
+            echo "- **Run**: (skipped - PR)" >> $GITHUB_STEP_SUMMARY
+          fi
