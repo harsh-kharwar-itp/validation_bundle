@@ -11,7 +11,7 @@ resources:
       tasks:
         - task_key: run_validation
           notebook_task:
-            notebook_path: /Workspace/Shared/data-validation-framework/files/src/dq_great_expectations
+            notebook_path: /Workspace/Shared/Validra/files/src/dq_validra_ge
             base_parameters:
               dataset_catalog: dbx-data-dev
               dataset_schema: dbx-dq-data-dev
