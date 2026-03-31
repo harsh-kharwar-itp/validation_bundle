@@ -31,9 +31,23 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Databricks CLI
+      - name: Install Databricks CLI (new)
+        uses: databricks/setup-cli@main
+
+      - name: Verify Databricks CLI
         run: |
-          pip install databricks-cli
+          databricks version
+          databricks bundle --help
+
+      - name: Validate Databricks secrets
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+        run: |
+          if [ -z "$DATABRICKS_HOST" ] || [ -z "$DATABRICKS_TOKEN" ]; then
+            echo "Missing required secrets. Please set DATABRICKS_HOST and DATABRICKS_TOKEN in repository secrets."
+            exit 1
+          fi
 
       - name: Detect bundle changes
         id: bundle_changes
